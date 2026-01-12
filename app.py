@@ -1,5 +1,6 @@
 import os
 from typing import Any, Dict
+import json
 
 from fastapi import FastAPI, Header, HTTPException
 from sqlalchemy import create_engine, text
@@ -28,19 +29,25 @@ def startup():
 @app.put("/api/submissions")
 def upsert_submission(body: Dict[str, Any], authorization: str | None = Header(default=None)):
     auth(authorization)
+
     match_key = body.get("match_key")
     if not match_key:
         raise HTTPException(status_code=400, detail="match_key is required")
+
+    payload_json = json.dumps(body)   # convert dict → JSON string
 
     with engine.begin() as conn:
         conn.execute(
             text("""
             INSERT INTO submissions (match_key, payload)
-            VALUES (:match_key, :payload::jsonb)
+            VALUES (:match_key, CAST(:payload AS JSONB))
             ON CONFLICT (match_key)
             DO UPDATE SET payload = EXCLUDED.payload, updated_at = now();
             """),
-            {"match_key": match_key, "payload": body},
+            {
+                "match_key": match_key,
+                "payload": payload_json
+            },
         )
 
     return {"ok": True, "match_key": match_key}
